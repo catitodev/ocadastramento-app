@@ -1,7 +1,8 @@
 import { MockAuthService } from "./auth-mock"
 
 // Verificar se Supabase está configurado
-const isSupabaseConfigured = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const isSupabaseConfigured =
+  typeof window !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 let supabase: any = null
 let bcrypt: any = null
@@ -11,7 +12,10 @@ if (isSupabaseConfigured) {
   try {
     const supabaseModule = require("./supabase")
     supabase = supabaseModule.supabase
-    bcrypt = require("bcryptjs")
+    // bcrypt só funciona no servidor, não no cliente
+    if (typeof window === "undefined") {
+      bcrypt = require("bcryptjs")
+    }
   } catch (error) {
     console.warn("Erro ao carregar Supabase, usando modo mock:", error)
   }
@@ -26,36 +30,30 @@ export class AuthService {
     }
 
     try {
-      // Buscar usuário no banco
-      const { data: usuario, error } = await supabase.from("usuarios").select("*").eq("email", email).single()
-
-      if (error || !usuario) {
-        throw new Error("Usuário não encontrado")
-      }
-
-      // Verificar senha
-      const senhaValida = await bcrypt.compare(senha, usuario.senha_hash)
-      if (!senhaValida) {
-        throw new Error("Senha incorreta")
-      }
-
-      // Fazer login no Supabase Auth
+      // Fazer login direto no Supabase Auth (sem verificação manual de senha)
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
       })
 
       if (authError) {
-        throw authError
+        throw new Error("Email ou senha incorretos")
+      }
+
+      // Buscar dados do usuário
+      const { data: usuario, error } = await supabase.from("usuarios").select("*").eq("email", email).single()
+
+      if (error || !usuario) {
+        throw new Error("Dados do usuário não encontrados")
       }
 
       // Registrar log de login
       await this.registrarLog("LOGIN", usuario.id, "usuarios")
 
       return { usuario, session: authData.session }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro no login:", error)
-      throw error
+      throw new Error(error.message || "Erro ao fazer login")
     }
   }
 
@@ -73,9 +71,6 @@ export class AuthService {
     }
 
     try {
-      // Hash da senha
-      const senhaHash = await bcrypt.hash(dadosUsuario.senha, 10)
-
       // Criar usuário no Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: dadosUsuario.email,
@@ -86,7 +81,7 @@ export class AuthService {
         throw authError
       }
 
-      // Inserir dados do usuário na tabela
+      // Inserir dados do usuário na tabela (sem hash manual da senha)
       const { data: usuario, error } = await supabase
         .from("usuarios")
         .insert({
@@ -94,7 +89,7 @@ export class AuthService {
           nome: dadosUsuario.nome,
           email: dadosUsuario.email,
           perfil: dadosUsuario.perfil,
-          senha_hash: senhaHash,
+          senha_hash: "managed_by_supabase_auth", // Placeholder
           tipo_dispositivo: dadosUsuario.tipo_dispositivo,
         })
         .select()
@@ -105,9 +100,9 @@ export class AuthService {
       }
 
       return usuario
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro no registro:", error)
-      throw error
+      throw new Error(error.message || "Erro ao criar conta")
     }
   }
 

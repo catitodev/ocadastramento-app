@@ -39,7 +39,7 @@ const mockUsers: MockUser[] = [
 export class MockAuthService {
   static async login(email: string, senha: string) {
     // Simular delay de rede
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 500))
 
     const usuario = mockUsers.find((u) => u.email === email)
 
@@ -47,13 +47,15 @@ export class MockAuthService {
       throw new Error("Usuário não encontrado")
     }
 
-    // Para desenvolvimento, aceitar qualquer senha
-    if (senha.length < 3) {
-      throw new Error("Senha deve ter pelo menos 3 caracteres")
+    // Para desenvolvimento, aceitar senha "123" ou qualquer senha com 3+ caracteres
+    if (senha !== "123" && senha.length < 3) {
+      throw new Error("Senha incorreta. Use '123' para testes.")
     }
 
     // Salvar no localStorage para simular sessão
-    localStorage.setItem("mockUser", JSON.stringify(usuario))
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mockUser", JSON.stringify(usuario))
+    }
 
     return { usuario, session: { user: usuario } }
   }
@@ -65,7 +67,7 @@ export class MockAuthService {
     perfil: "familia" | "tecnico" | "coordenacao" | "admin"
   }) {
     // Simular delay de rede
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 500))
 
     // Verificar se email já existe
     if (mockUsers.find((u) => u.email === dadosUsuario.email)) {
@@ -85,10 +87,16 @@ export class MockAuthService {
   }
 
   static async logout() {
-    localStorage.removeItem("mockUser")
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("mockUser")
+    }
   }
 
   static async getUsuarioAtual() {
+    if (typeof window === "undefined") {
+      return null
+    }
+
     const userData = localStorage.getItem("mockUser")
     return userData ? JSON.parse(userData) : null
   }
